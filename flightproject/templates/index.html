@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Sustainable Flight Route Explorer</title>
+  <!-- Google Font for futuristic look -->
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap" rel="stylesheet">
+  <!-- Bootstrap CSS for styling, modals, and tooltips -->
+  <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.0/css/bootstrap.min.css">
+  <!-- Leaflet CSS for maps -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+  <link rel="manifest" href="/manifest.json">
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', function() {
+        navigator.serviceWorker.register('/service-worker.js').then(function(registration) {
+          console.log('ServiceWorker registration successful with scope: ', registration.scope);
+        }, function(err) {
+          console.log('ServiceWorker registration failed: ', err);
+        });
+      });
+    }
+  </script>
+  <style>
+    /* Futuristic animated gradient background with aircraft texture */
+    body {
+      margin: 0;
+      padding: 0;
+      background: 
+        linear-gradient(135deg, rgba(15, 32, 62, 0.8), rgba(36, 59, 85, 0.8)),
+        url("https://source.unsplash.com/1600x900/?aircraft,futuristic");
+      background-blend-mode: overlay;
+      background-size: cover;
+      animation: neonPulse 15s ease infinite;
+      font-family: 'Orbitron', sans-serif;
+      color: #fff;
+      transition: all 0.5s ease;
+    }
+    @keyframes neonPulse {
+      0% { filter: hue-rotate(0deg); }
+      50% { filter: hue-rotate(90deg); }
+      100% { filter: hue-rotate(0deg); }
+    }
+    /* Semi-transparent dark overlay for improved readability */
+    .overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.35);
+      z-index: -1;
+      pointer-events: none;
+    }
+    /* Sidebar styling for slide-out menu */
+    #sidebar {
+      position: fixed;
+      top: 0;
+      left: -250px;
+      width: 250px;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.85);
+      transition: left 0.3s ease;
+      padding: 20px;
+      z-index: 1000;
+    }
+    #sidebar.active {
+      left: 0;
+    }
+    #sidebar h2 {
+      color: #00ffff;
+      text-align: center;
+      margin-bottom: 20px;
+    }
+    /* Sidebar button styles with tooltips */
+    #sidebar .btn-sidebar {
+      width: 100%;
+      margin-bottom: 10px;
+      background: linear-gradient(45deg, #00ffff, #00aaff);
+      border: 2px solid #fff;
+      border-radius: 30px;
+      color: #000;
+      padding: 10px 20px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      font-weight: bold;
+      transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+      box-shadow: 0 4px 6px rgba(0, 255, 255, 0.3);
+    }
+    #sidebar .btn-sidebar:hover {
+      background: linear-gradient(45deg, #00aaff, #00ffff);
+      transform: translateY(-3px);
+      box-shadow: 0 8px 12px rgba(0, 255, 255, 0.5);
+    }
+    /* Hamburger menu button */
+    #menu-toggle {
+      position: fixed;
+      top: 15px;
+      left: 15px;
+      background: rgba(0, 0, 0, 0.7);
+      border: none;
+      color: #00ffff;
+      font-size: 24px;
+      padding: 10px 15px;
+      border-radius: 5px;
+      z-index: 1100;
+      cursor: pointer;
+      transition: background 0.3s ease;
+    }
+    #menu-toggle:hover {
+      background: rgba(0, 0, 0, 0.9);
+    }
+    /* Main content container */
+    .content {
+      margin-left: 0;
+      transition: margin-left 0.3s ease;
+      padding: 20px;
+    }
+    .content.shifted {
+      margin-left: 250px;
+    }
+    /* Main container for map and results */
+    .main-container {
+      margin-top: 70px;
+      background: rgba(20, 20, 20, 0.9);
+      border-radius: 10px;
+      padding: 20px;
+      box-shadow: 0 0 20px rgba(0, 255, 255, 0.5);
+    }
+    h1 {
+      text-align: center;
+      color: #00ffff;
+      margin-bottom: 20px;
+    }
+    #map {
+      height: 500px;
+      margin-top: 20px;
+      border: 2px solid #00ffff;
+      border-radius: 8px;
+    }
+    /* Result alert styling for contrast */
+    .alert-info {
+      background-color: rgba(255,255,255,0.95) !important;
+      color: #000 !important;
+      border: 1px solid #00ffff;
+    }
+    /* Modal override for route details */
+    .modal-content {
+      background: #222;
+      color: #fff;
+    }
+    .modal-header h5 {
+      color: #00ffff;
+    }
+    /* Futuristic main control button styles (for the form) */
+    .btn-custom {
+      background: linear-gradient(45deg, #1e90ff, #00bfff);
+      border: 2px solid #fff;
+      border-radius: 30px;
+      color: #000;
+      padding: 12px 30px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      font-weight: bold;
+      transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+      box-shadow: 0 4px 6px rgba(0,255,255,0.3);
+      margin: 5px;
+      margin-bottom: 5px;
+    }
+    .btn-custom:hover {
+      background: linear-gradient(45deg, #00bfff, #1e90ff);
+      transform: translateY(-5px);
+      box-shadow: 0 8px 12px rgba(0,255,255,0.5);
+    }
+    /* Spacing for form elements */
+    .form-row {
+      margin-bottom: 15px;
+    }
+    
+    /* Responsive adjustments for mobile devices */
+    @media (max-width: 768px) {
+      #sidebar {
+        width: 200px;
+        left: -200px;
+      }
+      #sidebar.active {
+        left: 0;
+      }
+      .content.shifted {
+        margin-left: 200px;
+      }
+      h1 {
+        font-size: 1.8rem;
+      }
+      #menu-toggle {
+        font-size: 20px;
+        padding: 8px 12px;
+      }
+      .btn-sidebar, .btn-custom {
+        font-size: 0.9rem;
+        padding: 8px 16px;
+      }
+      #map {
+        height: 400px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <!-- Hamburger Menu Button -->
+  <button id="menu-toggle">&#9776;</button>
+  
+  <!-- Sidebar for controls -->
+  <div id="sidebar">
+    <h2>Controls</h2>
+    <button id="resetBtn" class="btn btn-sidebar" data-toggle="tooltip" data-placement="right" title="Clear route and reset the map">Reset</button>
+    <button id="toggleMarkersBtn" class="btn btn-sidebar" data-toggle="tooltip" data-placement="right" title="Show or hide city markers">Toggle Markers</button>
+    <button id="switchMapStyleBtn" class="btn btn-sidebar" data-toggle="tooltip" data-placement="right" title="Switch between map styles">Switch Map Style</button>
+    <button id="showConnectionsBtn" class="btn btn-sidebar" data-toggle="tooltip" data-placement="right" title="Display all direct flight connections">Show Connections</button>
+    <button id="clearConnectionsBtn" class="btn btn-sidebar" data-toggle="tooltip" data-placement="right" title="Remove all connection lines">Clear Connections</button>
+    <button id="toggleModeBtn" class="btn btn-sidebar" data-toggle="tooltip" data-placement="right" title="Toggle between Day and Night mode">Day/Night Mode</button>
+    <button id="showDetailsBtn" class="btn btn-sidebar" data-toggle="tooltip" data-placement="right" title="View detailed route information">Route Details</button>
+    <button id="helpBtn" class="btn btn-sidebar" data-toggle="tooltip" data-placement="right" title="Learn how to use the explorer">Help</button>
+    <button id="shareBtn" class="btn btn-sidebar" data-toggle="tooltip" data-placement="right" title="Share the computed route">Share Route</button>
+  </div>
+  
+  <!-- Main content area -->
+  <div class="content">
+    <div class="main-container">
+      <h1>Sustainable Flight Route Explorer</h1>
+      <form id="routeForm">
+        <div class="form-row">
+          <div class="form-group col-md-6">
+            <label for="source">Source:</label>
+            <select id="source" class="form-control">
+              {% for city in cities %}
+              <option value="{{ city }}">{{ city }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="form-group col-md-6">
+            <label for="destination">Destination:</label>
+            <select id="destination" class="form-control">
+              {% for city in cities %}
+              <option value="{{ city }}">{{ city }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+        <button type="submit" class="btn btn-custom btn-block">Find Shortest Path</button>
+      </form>
+      <div id="result"></div>
+      <div id="map"></div>
+    </div>
+  </div>
+  
+  <!-- Modal for Route Details -->
+  <div class="modal fade" id="detailsModal" tabindex="-1" role="dialog" aria-labelledby="detailsModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg" role="document">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 id="detailsModalLabel" class="modal-title">Route Details</h5>
+          <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+            <span aria-hidden="true">&times;</span>
+          </button>
+        </div>
+        <div class="modal-body">
+          <div id="routeDetails"></div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-custom" data-dismiss="modal">Close</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <!-- Modal for Help Information -->
+  <div class="modal fade" id="helpModal" tabindex="-1" role="dialog" aria-labelledby="helpModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg" role="document">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 id="helpModalLabel" class="modal-title">How to Use This Explorer</h5>
+          <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+            <span aria-hidden="true">&times;</span>
+          </button>
+        </div>
+        <div class="modal-body">
+          <p>This explorer allows you to find the shortest flight path between two cities, showing total cost, travel time, and an estimated arrival time. It features a futuristic design with a slide-out sidebar for controls and an animated airplane to simulate travel.</p>
+          <ul>
+            <li>Select a <strong>Source</strong> and <strong>Destination</strong> from the dropdown menus.</li>
+            <li>Click "Find Shortest Path" to compute the route.</li>
+            <li>The result will display the route, total cost, travel time, and estimated arrival time.</li>
+            <li>An animated airplane icon will fly along the computed route.</li>
+            <li>Use the sidebar controls to toggle markers, switch map style, show/clear connections, and toggle day/night mode.</li>
+            <li>Click "Route Details" for a detailed breakdown of each flight segment.</li>
+            <li>Click "Share Route" to get a shareable summary of your route.</li>
+            <li>Click "Help" to view these instructions again.</li>
+          </ul>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-custom" data-dismiss="modal">Close</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <!-- Modal for Sharing Route -->
+  <div class="modal fade" id="shareModal" tabindex="-1" role="dialog" aria-labelledby="shareModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-md" role="document">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 id="shareModalLabel" class="modal-title">Share Your Route</h5>
+          <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+            <span aria-hidden="true">&times;</span>
+          </button>
+        </div>
+        <div class="modal-body">
+          <p>Copy the text below to share your route with others:</p>
+          <textarea id="shareText" class="form-control" rows="4" readonly></textarea>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-custom" onclick="copyShareText()">Copy Text</button>
+          <button type="button" class="btn btn-custom" data-dismiss="modal">Close</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <!-- Leaflet JS for maps -->
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+  <!-- jQuery and Bootstrap JS for modals and tooltips -->
+  <script src="https://code.jquery.com/jquery-3.5.1.min.js"></script>
+  <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.0/js/bootstrap.bundle.min.js"></script>
+  <script>
+    // Initialize Bootstrap tooltips
+    $(function () {
+      $('[data-toggle="tooltip"]').tooltip();
+    });
+    
+    let map, routeLine, markers = [], connectionsLayer, airplaneMarker;
+    let markersVisible = true;
+    let currentRouteDetails = null; // For storing route details
+    let currentRouteSummary = ""; // For storing shareable route summary
+
+    // Define two tile layers: default OpenStreetMap and satellite view.
+    let defaultTile = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '&copy; OpenStreetMap contributors'
+    });
+    let satelliteTile = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+      maxZoom: 19,
+      attribution: 'Tiles &copy; Esri'
+    });
+    let currentTile = defaultTile;
+
+    // Initialize the Leaflet map.
+    function initMap() {
+      map = L.map('map', { layers: [currentTile] }).setView([20, 0], 2);
+      connectionsLayer = L.layerGroup().addTo(map);
+    }
+    initMap();
+
+    // City coordinates and flight routes from Flask.
+    const cityCoords = {{ coordinates|tojson }};
+    const flightRoutes = {{ flight_routes|tojson }};
+
+    // Add markers for each city.
+    for (const city in cityCoords) {
+      const latlng = cityCoords[city];
+      const marker = L.marker(latlng).addTo(map).bindPopup(city);
+      markers.push(marker);
+    }
+
+    // Toggle markers visibility.
+    function toggleMarkers() {
+      if (markersVisible) {
+        markers.forEach(marker => map.removeLayer(marker));
+        markersVisible = false;
+      } else {
+        markers.forEach(marker => marker.addTo(map));
+        markersVisible = true;
+      }
+    }
+
+    // Switch the map tile layer.
+    function switchMapStyle() {
+      map.removeLayer(currentTile);
+      currentTile = (currentTile === defaultTile) ? satelliteTile : defaultTile;
+      currentTile.addTo(map);
+    }
+
+    // Show all direct flight connections (blue dashed lines).
+    function showAllConnections() {
+      connectionsLayer.clearLayers();
+      for (const src in flightRoutes) {
+        const srcCoords = cityCoords[src];
+        for (const dest in flightRoutes[src]) {
+          const destCoords = cityCoords[dest];
+          const line = L.polyline([srcCoords, destCoords], {
+            color: 'blue',
+            dashArray: '5, 10'
+          });
+          connectionsLayer.addLayer(line);
+        }
+      }
+    }
+
+    // Clear all connection lines.
+    function clearConnections() {
+      connectionsLayer.clearLayers();
+    }
+
+    // Function to animate an airplane icon along the route.
+    function animateAirplane(latlngs, travelDuration) {
+      if (airplaneMarker) {
+        map.removeLayer(airplaneMarker);
+      }
+      // Use an alternative airplane icon URL.
+      const airplaneIcon = L.icon({
+        iconUrl: 'https://cdn-icons-png.flaticon.com/512/747/747376.png',
+        iconSize: [40, 40],
+        iconAnchor: [20, 20]
+      });
+      airplaneMarker = L.marker(latlngs[0], {icon: airplaneIcon}).addTo(map);
+      let totalDist = 0;
+      for (let i = 0; i < latlngs.length - 1; i++) {
+        totalDist += latlngs[i].distanceTo(latlngs[i + 1]);
+      }
+      const duration = travelDuration * 1000;
+      const startTime = Date.now();
+      const interval = setInterval(() => {
+        const elapsed = Date.now() - startTime;
+        const t = elapsed / duration;
+        if (t >= 1) {
+          airplaneMarker.setLatLng(latlngs[latlngs.length - 1]);
+          clearInterval(interval);
+        } else {
+          const currentDist = totalDist * t;
+          let cumDist = 0;
+          let currentPos = latlngs[0];
+          for (let i = 0; i < latlngs.length - 1; i++) {
+            const segmentDist = latlngs[i].distanceTo(latlngs[i + 1]);
+            if (cumDist + segmentDist >= currentDist) {
+              const segmentFraction = (currentDist - cumDist) / segmentDist;
+              currentPos = L.latLng(
+                latlngs[i].lat + segmentFraction * (latlngs[i + 1].lat - latlngs[i].lat),
+                latlngs[i].lng + segmentFraction * (latlngs[i + 1].lng - latlngs[i].lng)
+              );
+              break;
+            }
+            cumDist += segmentDist;
+          }
+          airplaneMarker.setLatLng(currentPos);
+        }
+      }, 50);
+    }
+
+    // Handle form submission to get the shortest route.
+    $("#routeForm").submit(function(e) {
+      e.preventDefault();
+      let source = $("#source").val();
+      let destination = $("#destination").val();
+      if (source === destination) {
+        alert("Source and destination cannot be the same.");
+        return;
+      }
+      $.ajax({
+        url: "/get_routes",
+        type: "POST",
+        contentType: "application/json",
+        data: JSON.stringify({ source: source, destination: destination }),
+        success: function(data) {
+          $("#result").html(
+            `<div class="alert alert-info">
+              <h4>Shortest Path:</h4>
+              <p>${data.route.join(" → ")}</p>
+              <p><strong>Total Cost:</strong> $${data.total_cost}</p>
+              <p><strong>Total Travel Time:</strong> ${data.total_travel_time} hours</p>
+              <p><strong>Estimated Arrival Time:</strong> ${data.arrival_time}</p>
+            </div>`
+          );
+          currentRouteDetails = data.route.map((city, index, arr) => {
+            if (index < arr.length - 1) {
+              let cost = flightRoutes[city] && flightRoutes[city][arr[index + 1]] ? flightRoutes[city][arr[index + 1]] : "N/A";
+              return `<li>${city} to ${arr[index+1]} : $${cost}</li>`;
+            }
+          }).filter(item => item).join("");
+          currentRouteSummary = `Route: ${data.route.join(" → ")}\nTotal Cost: $${data.total_cost}\nTravel Time: ${data.total_travel_time} hours\nEstimated Arrival: ${data.arrival_time}`;
+          if (routeLine) { map.removeLayer(routeLine); }
+          const latlngs = data.coordinates.map(coord => L.latLng(coord[0], coord[1]));
+          routeLine = L.polyline(latlngs, { color: 'red', weight: 4 }).addTo(map);
+          map.fitBounds(routeLine.getBounds());
+          animateAirplane(latlngs, data.total_travel_time);
+        },
+        error: function(err) {
+          alert("Error: " + err.responseJSON.error);
+        }
+      });
+    });
+
+    // Reset button: clear the route and reset the map.
+    $("#resetBtn").click(function() {
+      if (routeLine) {
+        map.removeLayer(routeLine);
+        routeLine = null;
+      }
+      if (airplaneMarker) {
+        map.removeLayer(airplaneMarker);
+        airplaneMarker = null;
+      }
+      $("#result").empty();
+      map.setView([20, 0], 2);
+    });
+
+    // Toggle Day/Night Mode.
+    $("#toggleModeBtn").click(function() {
+      $("body").toggleClass("night-mode");
+    });
+
+    // Show route details in modal.
+    $("#showDetailsBtn").click(function() {
+      if (!currentRouteDetails) {
+        alert("No route details available. Please compute a route first.");
+        return;
+      }
+      $("#routeDetails").html(`<ul>${currentRouteDetails}</ul>`);
+      $("#detailsModal").modal("show");
+    });
+
+    // Share Route: open modal and fill share text.
+    $("#shareBtn").click(function() {
+      if (!currentRouteSummary) {
+        alert("No route computed yet. Please compute a route first.");
+        return;
+      }
+      $("#shareText").val(currentRouteSummary);
+      $("#shareModal").modal("show");
+    });
+    
+    // Function to copy share text to clipboard.
+    function copyShareText() {
+      var copyText = document.getElementById("shareText");
+      copyText.select();
+      copyText.setSelectionRange(0, 99999);
+      document.execCommand("copy");
+      alert("Route summary copied to clipboard!");
+    }
+    
+    // Sidebar button handlers.
+    $("#toggleMarkersBtn").click(function() { toggleMarkers(); });
+    $("#switchMapStyleBtn").click(function() { switchMapStyle(); });
+    $("#showConnectionsBtn").click(function() { showAllConnections(); });
+    $("#clearConnectionsBtn").click(function() { clearConnections(); });
+    
+    // Hamburger menu toggle.
+    $("#menu-toggle").click(function() {
+      $("#sidebar").toggleClass("active");
+      $(".content").toggleClass("shifted");
+    });
+    
+    // Help button: open help modal.
+    $("#helpBtn").click(function() {
+      $("#helpModal").modal("show");
+    });
+  </script>
+</body>
+</html>
